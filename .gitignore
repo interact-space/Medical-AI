@@ -1,0 +1,37 @@
+# Python 编译文件
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.log
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 环境变量文件
+.env
+.env.*
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+
+# 本地数据库与缓存
+*.db
+runs/
+*.sqlite3
+
+# MacOS 系统文件
+.DS_Store
+
+# Python build
+build/
+dist/
+*.egg-info/
