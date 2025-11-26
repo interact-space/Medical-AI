@@ -178,23 +178,42 @@ def generate_distribution_sql(intent: FeasibilityIntent, extra_fields: Dict[str,
 
 def intent_to_sql(intent: FeasibilityIntent, extra_fields: Dict[str, Any] = None) -> str:
     """
-    根据 intent.task_type 调用对应 SQL 模板
+    根据 intent.task_type 或 operation_type 调用对应 SQL 模板
     
     Args:
         intent: FeasibilityIntent 对象
         extra_fields: 包含额外字段的字典（如 condition_concept_id）
     """
-
-    if intent.task_type == "count":
+    
+    # 优先使用 operation_type，如果没有则使用 task_type
+    op_type = intent.operation_type or intent.task_type
+    
+    if op_type == "count":
         return generate_count_sql(intent, extra_fields)
-
-    if intent.task_type == "trend":
+    
+    if op_type == "trend":
         return generate_trend_sql(intent, extra_fields)
-
-    if intent.task_type == "distribution":
+    
+    if op_type == "distribution":
         return generate_distribution_sql(intent, extra_fields)
-
-    raise ValueError(f"Unsupported task_type: {intent.task_type}")
+    
+    if op_type == "select":
+        # 通用查询，使用 count SQL 作为基础
+        return generate_count_sql(intent, extra_fields)
+    
+    if op_type in ["insert", "update", "delete"]:
+        # 这些操作类型需要在 intent 中提供更多信息
+        # 目前返回基础 SQL，实际应该根据具体需求生成
+        raise NotImplementedError(
+            f"Operation type '{op_type}' is not yet fully implemented. "
+            "Please provide more details about the operation."
+        )
+    
+    # 默认使用 count
+    if op_type:
+        return generate_count_sql(intent, extra_fields)
+    
+    raise ValueError(f"Unsupported task_type/operation_type: {op_type}")
 
 
 # =====================================================

@@ -1,6 +1,6 @@
 import os, json, datetime
 from dotenv import load_dotenv
-from poc.db.init_database import init_db
+# from poc.db.init_database import init_db
 from poc.graph.dag_builder import build_graph
 from poc.audit.log_manager import save_run
 from poc.audit.replay import replay
@@ -39,15 +39,8 @@ if __name__ == "__main__":
     # init_db()
     # 2) 运行一次
     q = 'Find how many patients had type 2 diabetes between 2020 and 2024'
-    queries = [
-    "帮我看看 2021 到 2023 有多少 2 型糖尿病的住院患者？",
-    "请在数据库里插入一个新的患者记录。",
-    "查一下男性患者; DROP TABLE person;"
-]
-
-    for q in queries:
-        run_id, run_obj = run_pipeline(q)
+    run_id, run_obj = run_pipeline(q)
     # 3) Replay
-    # print("🔁 Replay now...")
-    # re = replay(run_id)
-    # print(json.dumps(re, ensure_ascii=False, indent=2))
+    print("🔁 Replay now...")
+    re = replay(run_id)
+    print(json.dumps(re, ensure_ascii=False, indent=2))

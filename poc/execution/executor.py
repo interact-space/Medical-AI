@@ -80,8 +80,16 @@ def run_dry(sql: str) -> int:
         return int(out[0]["estimated_rows"])
     return -1
 
-def execute_plan_steps(plan: List[Dict[str, Any]], intent: Dict[str, Any], audit_steps: List[Dict[str, Any]]):
+def execute_plan_steps(
+    plan: List[Dict[str, Any]], 
+    intent: Dict[str, Any], 
+    audit_steps: List[Dict[str, Any]],
+    user_confirmed: bool = False,
+    snapshot_id: str = None
+):
     ctx = {"intent": intent.copy()}
+    created_snapshot_id = None
+    
     for step in plan:
         record = {
             "step_id": step["id"],
@@ -107,22 +115,67 @@ def execute_plan_steps(plan: List[Dict[str, Any]], intent: Dict[str, Any], audit
                 record["outputs"] = {"estimated_rows": est, "risk": rp}
                 ctx["estimated_rows"] = est
                 ctx["risk"] = rp
+                
+                # 如果是高风险操作，创建快照
+                if rp.get("needs_approval") and not created_snapshot_id:
+                    from poc.utils.snapshot_manager import create_snapshot_for_operation
+                    created_snapshot_id = create_snapshot_for_operation(
+                        operation_type=rp.get("statement_type", "UNKNOWN"),
+                        sql=ctx["sql"],
+                        user_input=intent.get("research_question", "")
+                    )
+                    record["outputs"]["snapshot_id"] = created_snapshot_id
+                    ctx["snapshot_id"] = created_snapshot_id
 
             elif step["action"] == "run_sql":
-                # 风险闸门
-                if not is_read_only(ctx["sql"]) or ctx.get("risk", {}).get("needs_approval"):
-                    raise RuntimeError("High risk or non-read-only SQL, execution blocked.")
+                # 风险闸门：需要用户确认的高风险操作
+                if ctx.get("risk", {}).get("needs_approval") and not user_confirmed:
+                    raise RuntimeError(
+                        f"High risk operation requires user confirmation. "
+                        f"Risk level: {ctx.get('risk', {}).get('risk', 'unknown')}. "
+                        f"Snapshot ID: {created_snapshot_id or snapshot_id or 'N/A'}"
+                    )
+                
+                # 检查是否为只读操作
+                if not is_read_only(ctx["sql"]):
+                    # 非只读操作也需要确认
+                    if not user_confirmed:
+                        raise RuntimeError(
+                            f"Non-read-only SQL requires user confirmation. "
+                            f"Snapshot ID: {created_snapshot_id or snapshot_id or 'N/A'}"
+                        )
+                
                 res = run_sql(ctx["sql"])
                 ctx["result"] = res
                 record["outputs"] = {"result": res}
+                
+                # 记录快照ID（如果有）
+                if created_snapshot_id or snapshot_id:
+                    record["outputs"]["snapshot_id"] = created_snapshot_id or snapshot_id
 
             elif step["action"] == "summarize_result":
-                # 最小化总结
-                n = None
+                # 生成友好的操作总结
+                timestamp = datetime.datetime.utcnow().strftime("%Y年%m月%d日")
+                
                 if ctx.get("result"):
                     first = ctx["result"][0]
                     n = list(first.values())[0]
-                record["outputs"] = {"summary": f"Result count = {n}"}
+                    
+                    operation_type = ctx.get("risk", {}).get("statement_type", "SELECT")
+                    operation_desc = {
+                        "SELECT": "查询",
+                        "INSERT": "添加",
+                        "UPDATE": "更新",
+                        "DELETE": "删除"
+                    }.get(operation_type, "操作")
+                    
+                    summary = f"{timestamp}，用户执行了{operation_desc}操作，返回结果：{n}"
+                    if created_snapshot_id or snapshot_id:
+                        summary += f"（快照ID: {created_snapshot_id or snapshot_id}）"
+                else:
+                    summary = f"{timestamp}，操作完成"
+                
+                record["outputs"] = {"summary": summary}
 
             record["status"] = "success"
         except Exception as e:
